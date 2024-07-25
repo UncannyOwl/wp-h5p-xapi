@@ -25,11 +25,8 @@ jQuery(function($) {
 	 */
 	function showError(message, code) {
 		console.error("Unable to save xAPI statement");
-                if( xapi_settings.alerts == true ){
-                    alert("Unable to save result data.\n\nMessage: " + message + "\n" + "Code: " + code);
-                } else {
-                    console.log("Unable to save result data.\n\nMessage: " + message + "\n" + "Code: " + code);
-                }
+
+		alert("Unable to save result data.\n\nMessage: " + message + "\n" + "Code: " + code);
 	}
 
 	/**
@@ -74,14 +71,12 @@ jQuery(function($) {
 	 * xAPI statement event listener.
 	 */
 	function onXapi(event) {
-		if (!xapi_settings.ajax_url)
+		if (!WP_H5P_XAPI_STATEMENT_URL)
 			return;
 
 		showSpinner();
 
-		var data = {
-			action: 'xapi_event'
-		};
+		var data = {};
 		/*console.log("on xapi, statement:");
 		console.log(JSON.stringify(event.data.statement));*/
 
@@ -98,15 +93,15 @@ jQuery(function($) {
 			event.data.statement.context.contextActivities.grouping = [];
 		}
 
-		if (xapi_settings.context_activity)
-			event.data.statement.context.contextActivities.grouping.push(xapi_settings.context_activity);
+		if (WP_H5P_XAPI_CONTEXTACTIVITY)
+			event.data.statement.context.contextActivities.grouping.push(WP_H5P_XAPI_CONTEXTACTIVITY);
 
 		data.statement = JSON.stringify(event.data.statement);
 		//data.statement = event.data.statement;
 
 		$.ajax({
 			type: "POST",
-			url: xapi_settings.ajax_url,
+			url: WP_H5P_XAPI_STATEMENT_URL,
 			data: data,
 			dataType: "json",
 			success: onXapiPostSuccess,
@@ -118,6 +113,7 @@ jQuery(function($) {
 	 * Main.
 	 * Create save spinner and register event listener.
 	 */
+	var has_attachment_attempted = false;
 	$(document).ready(function() {
 		//console.log("h5p xapi ready");
 
@@ -126,5 +122,23 @@ jQuery(function($) {
 
 		$("body").append("<div id='wp-h5p-xapi-spinner'>Saving...</div>");
 		$("#wp-h5p-xapi-spinner").hide();
+
+		// Listen for messages from iframes
+		window.addEventListener('message', function receiveMessage(event) {
+			if (event.data.context !== 'h5p') {
+				return; // Only handle h5p requests.
+			}
+			if( ! has_attachment_attempted ) {
+				// Find out who sent the message
+				var iframe, iframes = document.getElementsByTagName('iframe');
+				for (var i = 0; i < iframes.length; i++) {
+					if (iframes[i].contentWindow.H5P) {
+						iframes[i].contentWindow.H5P.externalDispatcher.on('xAPI', onXapi);
+						has_attachment_attempted = true;
+					}
+				}
+			}
+
+		}, false);
 	});
 });

@@ -1,105 +1,88 @@
 <?php
 
-$h5pxapi_response_message=NULL;
+namespace UCTINCAN\TinCanRequest;
+
+$h5pxapi_response_message = null;
 
 /**
  * This file receives the xAPI statement as a http post.
  */
+require_once __DIR__ . "/src/utils/Template.php";
+require_once __DIR__ . "/src/utils/WpUtil.php";
+require_once __DIR__ . "/plugin.php";
 
-require_once __DIR__."/src/utils/Template.php";
-require_once __DIR__."/src/utils/WpUtil.php";
-require_once __DIR__."/plugin.php";
-
-use h5pxapi\Template;
 use h5pxapi\WpUtil;
 
-// require_once WpUtil::getWpLoadPath();
+require_once WpUtil::getWpLoadPath();
 
-$statementObject=json_decode(stripslashes($_REQUEST["statement"]),TRUE);
+header("X-Robots-Tag: noindex, nofollow", true);
 
-if (isset($statementObject["context"]["extensions"]) 
-		&& !$statementObject["context"]["extensions"])
-	unset($statementObject["context"]["extensions"]);
+if( ! check_ajax_referer( 'process-xapi-statement', 'security', false ) ) {
+	echo json_encode( [
+		"ok"      => 1,
+		"message" => "false",
+		"code"    => 403,
+	] );
 
-if ( has_filter("h5p-xapi-pre-save")) {
-	$statementObject=apply_filters("h5p-xapi-pre-save",$statementObject);
+	exit();
+}
 
-	if (!$statementObject) {
-		echo json_encode(array(
-			"ok"=>1,
-			"message"=>$h5pxapi_response_message
-		));
+if ( ( isset( $_SERVER['HTTP_REFERER'] ) && ! empty( $_SERVER['HTTP_REFERER'] ) ) ) {
+	if ( strtolower( parse_url( $_SERVER['HTTP_REFERER'], PHP_URL_HOST ) ) != strtolower( $_SERVER['HTTP_HOST'] ) ) {
+		echo json_encode( [
+			"ok"      => 1,
+			"message" => "false",
+			"code"    => 403,
+		] );
+
+		exit();
+	}
+}
+
+if( ! is_user_logged_in() ) {
+	echo json_encode( [
+		"ok"      => 1,
+		"message" => "false",
+		"code"    => 403,
+	] );
+
+	exit();
+}
+
+$statementObject = json_decode( stripslashes( $_REQUEST["statement"] ), true );
+if ( isset( $statementObject["context"]["extensions"] )
+     && ! $statementObject["context"]["extensions"]
+) {
+	unset( $statementObject["context"]["extensions"] );
+}
+
+if ( has_filter( "h5p-xapi-pre-save" ) ) {
+	$statementObject = apply_filters( "h5p-xapi-pre-save", $statementObject );
+
+	if ( ! $statementObject ) {
+		echo json_encode( [
+			"ok"      => 1,
+			"message" => $h5pxapi_response_message,
+		] );
 		exit;
 	}
 }
 
-$settings=h5pxapi_get_auth_settings();
-$content=json_encode($statementObject);
-
-//error_log($content);
-
-$url=$settings["endpoint_url"];
-if (!trim($url)) {
-	echo json_encode(array(
-		"ok"=>1,
-		"message"=>$h5pxapi_response_message
-	));
-	exit;
+$tin_can_h5p = new H5P( $statementObject );
+$res         = $tin_can_h5p->get_completion();
+if ( $res ) {
+	$response = [
+		"ok"      => 1,
+		"message" => "true",
+		"code"    => 200,
+	];
+} else {
+	$response = [
+		"ok"      => 1,
+		"message" => "false",
+		"code"    => 200,
+	];
 }
 
-if (substr($url,-1)!="/")
-	$url.="/";
-$url.="statements";
-
-$userpwd=$settings["username"].":".$settings["password"];
-
-$headers=array(
-	"Content-Type: application/json",
-	"X-Experience-API-Version: 1.0.1",
-);
-
-$curl=curl_init();
-curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
-curl_setopt($curl,CURLOPT_HTTPHEADER,$headers);
-curl_setopt($curl,CURLOPT_USERPWD,$userpwd);
-curl_setopt($curl,CURLOPT_URL,$url);
-curl_setopt($curl,CURLOPT_POST,1);
-curl_setopt($curl,CURLOPT_POSTFIELDS,$content);
-
-$res=curl_exec($curl);
-$decoded=json_decode($res,TRUE);
-$code=curl_getinfo($curl,CURLINFO_HTTP_CODE);
-
-// We rely on the response to be an array with a single entry
-// constituting a uuid for the inserted statement, something like
-// ["70de9692-2a4e-4f66-8441-c15ef534b690"].
-// Is this learninglocker specific?
-if ($code!=200 || sizeof($decoded)!=1 || strlen($decoded[0])!=36) {
-	$response=array(
-		"ok"=>0,
-		"message"=>"Unknown error",
-		"code"=>$code
-	);
-
-	if ($decoded["message"])
-		$response["message"]=$decoded["message"];
-		
-	if (is_string($res))
-		$response["message"] = $res;
-	
-	if ($res == FALSE) {
-		$response["message"] = curl_error($curl);
-	}
-
-	echo json_encode($response);
-	exit;
-}
-
-$h5pxapi_response_message = apply_filters("h5p-xapi-post-save",$statementObject);
-
-$response=array(
-	"ok"=>1,
-	"message"=>$h5pxapi_response_message
-);
-
-echo json_encode($response);
+echo json_encode( $response );
+exit();

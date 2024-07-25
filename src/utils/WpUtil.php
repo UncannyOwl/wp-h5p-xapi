@@ -14,7 +14,7 @@
 			public static function getWpLoadPath() {
 				$path=$_SERVER['SCRIPT_FILENAME'];
 
-				for ($i=0; $i<4; $i++)
+				for ($i=0; $i<6; $i++)
 					$path=dirname($path);
 
 				return $path."/wp-load.php";
